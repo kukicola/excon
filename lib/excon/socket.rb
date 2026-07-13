@@ -52,7 +52,8 @@ module Excon
       @data = data
       @nonblock = data[:nonblock]
       @port ||= @data[:port] || 80
-      @read_buffer = String.new
+      @read_buffer = String.new(encoding: Encoding::BINARY)
+      @read_buffer_scratch = String.new(encoding: Encoding::BINARY)
       @read_offset = 0
       @eof = false
       @backend_eof = false
@@ -239,7 +240,7 @@ module Excon
               # Avoid allocating a new buffer string when the read buffer is empty
               @read_buffer = @socket.read_nonblock(max_length, @read_buffer)
             else
-              @read_buffer << @socket.read_nonblock(max_length - readable_bytes)
+              @read_buffer << @socket.read_nonblock(max_length - readable_bytes, @read_buffer_scratch)
             end
           end
         else
@@ -248,7 +249,7 @@ module Excon
               # Avoid allocating a new buffer string when the read buffer is empty
               @read_buffer = @socket.read_nonblock(@data[:chunk_size], @read_buffer)
             else
-              @read_buffer << @socket.read_nonblock(@data[:chunk_size])
+              @read_buffer << @socket.read_nonblock(@data[:chunk_size], @read_buffer_scratch)
             end
           end
         end

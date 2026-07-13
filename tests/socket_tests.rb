@@ -25,14 +25,18 @@ end
 # A socket whose read_nonblock returns from an input list,
 # and which counts the number of reads
 class MockNonblockRubySocket
-  attr_reader :sequence
+  attr_reader :out_buffers, :sequence
 
-  def initialize(nonblock_reads)
+  def initialize(nonblock_reads, max_read_size = nil)
+    @max_read_size = max_read_size || Float::INFINITY
     @nonblock_reads = nonblock_reads
+    @out_buffers = []
     @sequence = []
   end
 
   def read_nonblock(maxlen, buffer = nil)
+    @out_buffers << buffer
+
     if @nonblock_reads.empty?
       @sequence << 'EOF'
       raise EOFError
@@ -44,8 +48,8 @@ class MockNonblockRubySocket
       end
       @sequence << 'EAGAIN'
       raise Errno::EAGAIN
-    elsif
-      len = maxlen ? maxlen : @nonblock_reads.first.length
+    else
+      len = [maxlen || @nonblock_reads.first.length, @max_read_size].min
       ret = @nonblock_reads.first.slice!(0, len)
       @sequence << ret.length
 
@@ -117,5 +121,29 @@ Shindo.tests('socket') do
         end
       end
     end
+  end
+
+  tests('read(max_length) reuses a binary append buffer').returns(true) do
+    backend_socket = MockNonblockRubySocket.new(["abcd\xFFf".b], 2)
+    socket = MockExconSocket.new(backend_socket, nonblock: true)
+    result = socket.read(6)
+    append_buffers = backend_socket.out_buffers[1..]
+    scratch = append_buffers.first
+
+    result == "abcd\xFFf".b && result.encoding == Encoding::BINARY &&
+      append_buffers.length == 2 &&
+      append_buffers.all? { |buffer| buffer && buffer.equal?(scratch) && buffer.encoding == Encoding::BINARY }
+  end
+
+  tests('read(nil) reuses a binary append buffer').returns(true) do
+    backend_socket = MockNonblockRubySocket.new(["ab\xFF".b], 2)
+    socket = MockExconSocket.new(backend_socket, nonblock: true, chunk_size: 512)
+    result = socket.read(nil)
+    append_buffers = backend_socket.out_buffers[1..]
+    scratch = append_buffers.first
+
+    result == "ab\xFF".b &&
+      append_buffers.length == 2 &&
+      append_buffers.all? { |buffer| buffer && buffer.equal?(scratch) && buffer.encoding == Encoding::BINARY }
   end
 end
