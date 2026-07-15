@@ -69,7 +69,22 @@ class MockNonblockRubySocket
   end
 end
 
+class MockBlockingRubySocket
+  def initialize(error)
+    @error = error
+  end
+
+  def read(_max_length)
+    raise @error
+  end
+end
+
 Shindo.tests('socket') do
+  tests('read_block re-raises SSL errors').raises(OpenSSL::SSL::SSLError) do
+    error = OpenSSL::SSL::SSLError.new('SSL error')
+    MockExconSocket.new(MockBlockingRubySocket.new(error)).read
+  end
+
   CHUNK_SIZES = [nil, 512]
   CHUNK_SIZES.each do |chunk_size|
     tests("chunk_size: #{chunk_size}") do

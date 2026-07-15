@@ -298,7 +298,7 @@ module Excon
     rescue OpenSSL::SSL::SSLError => e
       select_with_timeout(@socket, :read) && retry if e.message == 'read would block'
 
-      raise(error)
+      raise(e)
     rescue *READ_RETRY_EXCEPTION_CLASSES
       select_with_timeout(@socket, :read) && retry
     rescue EOFError
